@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sensus | Static MVP Preview</title>
+    <link rel="stylesheet" href="./app/globals.css" />
+    <style>
+      .icon {
+        display: inline-grid;
+        width: 1.1em;
+        height: 1.1em;
+        place-items: center;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="reader-shell">
+      <aside class="library-rail" aria-label="Text library">
+        <div class="brand-mark">
+          <span class="icon">▥</span>
+          <div>
+            <strong>Sensus</strong>
+            <span>Latin dossier reader</span>
+          </div>
+        </div>
+        <div class="passage-tabs" id="passage-tabs"></div>
+        <section class="source-note">
+          <span class="icon">◱</span>
+          <p id="source-note"></p>
+        </section>
+      </aside>
+
+      <section class="reading-stage">
+        <header class="passage-header">
+          <div>
+            <p class="eyebrow" id="passage-meta"></p>
+            <h1 id="passage-title"></h1>
+            <p id="passage-description"></p>
+          </div>
+          <div class="status-pill"><span class="icon">✓</span> Human-editable annotations</div>
+        </header>
+
+        <article class="latin-panel" id="latin-panel" aria-label="Interactive Latin text"></article>
+
+        <section class="analysis-grid">
+          <section class="analysis-panel">
+            <div class="panel-title">
+              <span class="icon">⌘</span>
+              <h2>Sentence anatomy</h2>
+            </div>
+            <p class="translation" id="sentence-translation"></p>
+            <p id="syntax-explanation"></p>
+            <div class="dependency-strip" id="dependency-strip"></div>
+          </section>
+
+          <section class="analysis-panel context-panel">
+            <div class="panel-title">
+              <span class="icon">◎</span>
+              <h2>Case file</h2>
+            </div>
+            <div class="map-board" id="map-board" aria-label="Context map"></div>
+            <div class="context-cards" id="context-cards"></div>
+            <ol class="timeline" id="timeline"></ol>
+          </section>
+        </section>
+      </section>
+
+      <aside class="token-inspector" aria-label="Selected word analysis">
+        <div class="inspector-header">
+          <span class="eyebrow">Selected word</span>
+          <h2 id="token-form"></h2>
+          <p id="token-context"></p>
+        </div>
+        <dl class="morph-list" id="morph-list"></dl>
+        <section class="inspector-section">
+          <h3><span class="icon">✦</span> Grammar note</h3>
+          <p id="grammar-note"></p>
+        </section>
+        <section class="inspector-section">
+          <h3><span class="icon">⌬</span> Etymology</h3>
+          <p id="etymology"></p>
+        </section>
+        <section class="inspector-section translation-box">
+          <h3>Sentence translation</h3>
+          <p id="inspector-translation"></p>
+        </section>
+        <button class="edit-button" type="button"><span class="icon">✎</span> Propose correction</button>
+      </aside>
+    </main>
+
+    <script>
+      const state = { passageId: "", sentenceId: "", tokenId: "" };
+      let data = null;
+
+      const $ = (id) => document.getElementById(id);
+
+      function currentPassage() {
+        return data.passages.find((passage) => passage.id === state.passageId) || data.passages[0];
+      }
+
+      function currentSentence(passage) {
+        return passage.sentences.find((sentence) => sentence.id === state.sentenceId) || passage.sentences[0];
+      }
+
+      function currentToken(passage, sentence) {
+        return (
+          passage.sentences.flatMap((item) => item.tokens).find((token) => token.id === state.tokenId) ||
+          sentence.tokens[0]
+        );
+      }
+
+      function setPassage(id) {
+        const passage = data.passages.find((item) => item.id === id) || data.passages[0];
+        state.passageId = passage.id;
+        state.sentenceId = passage.sentences[0].id;
+        state.tokenId = passage.sentences[0].tokens[0].id;
+        render();
+      }
+
+      function render() {
+        const passage = currentPassage();
+        const sentence = currentSentence(passage);
+        const token = currentToken(passage, sentence);
+
+        $("passage-tabs").innerHTML = data.passages
+          .map(
+            (item) => `
+              <button class="passage-tab ${item.id === passage.id ? "active" : ""}" onclick="setPassage('${item.id}')" type="button">
+                <span>${item.author}</span>
+                <strong>${item.shortTitle}</strong>
+              </button>`
+          )
+          .join("");
+
+        $("source-note").textContent = passage.source;
+        $("passage-meta").textContent = `${passage.language.toUpperCase()} / ${passage.period}`;
+        $("passage-title").textContent = passage.title;
+        $("passage-description").textContent = passage.description;
+
+        $("latin-panel").innerHTML = passage.sentences
+          .map(
+            (item) => `
+              <p class="sentence ${item.id === sentence.id ? "selected" : ""}" onclick="selectSentence('${item.id}')">
+                ${item.tokens
+                  .map(
+                    (word) => `
+                      <button class="token ${word.id === token.id ? "active" : ""}" title="${word.lemma} - ${word.shortMeaning}" onclick="selectToken(event, '${item.id}', '${word.id}')" type="button">
+                        ${word.form}
+                      </button>`
+                  )
+                  .join("")}
+              </p>`
+          )
+          .join("");
+
+        $("sentence-translation").textContent = sentence.translation;
+        $("syntax-explanation").textContent = sentence.syntaxExplanation;
+        $("dependency-strip").innerHTML = sentence.dependencies
+          .slice(0, 6)
+          .map((dep) => `<span><strong>${dep.from}</strong><small>${dep.label}</small><em>${dep.to}</em></span>`)
+          .join("");
+
+        $("map-board").innerHTML = passage.context.mapLocations
+          .map(
+            (place) =>
+              `<span class="map-pin" title="${place.name}" style="left: ${place.x}%; top: ${place.y}%;">⌖</span>`
+          )
+          .join("");
+        $("context-cards").innerHTML = passage.context.cards
+          .map((card) => `<article><span>${card.type}</span><h3>${card.title}</h3><p>${card.body}</p></article>`)
+          .join("");
+        $("timeline").innerHTML = passage.context.timeline
+          .map((item) => `<li><span class="icon">◷</span><strong>${item.date}</strong><span>${item.event}</span></li>`)
+          .join("");
+
+        $("token-form").textContent = token.form;
+        $("token-context").textContent = token.contextMeaning;
+        $("morph-list").innerHTML = [
+          ["Lemma", token.lemma],
+          ["Part of speech", token.partOfSpeech],
+          ["Morphology", token.morphology],
+          ["Syntax role", token.syntaxRole]
+        ]
+          .map(([label, value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`)
+          .join("");
+        $("grammar-note").textContent = token.grammarNote;
+        $("etymology").textContent = token.etymology;
+        $("inspector-translation").textContent = sentence.translation;
+      }
+
+      function selectSentence(sentenceId) {
+        const passage = currentPassage();
+        const sentence = passage.sentences.find((item) => item.id === sentenceId);
+        state.sentenceId = sentence.id;
+        state.tokenId = sentence.tokens[0].id;
+        render();
+      }
+
+      function selectToken(event, sentenceId, tokenId) {
+        event.stopPropagation();
+        state.sentenceId = sentenceId;
+        state.tokenId = tokenId;
+        render();
+      }
+
+      fetch("./data/passages.json")
+        .then((response) => response.json())
+        .then((json) => {
+          data = json;
+          state.passageId = data.passages[0].id;
+          state.sentenceId = data.passages[0].sentences[0].id;
+          state.tokenId = data.passages[0].sentences[0].tokens[0].id;
+          render();
+        });
+    </script>
+  </body>
+</html>
